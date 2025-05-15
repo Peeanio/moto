@@ -2065,6 +2065,66 @@ def test_describe_instance_status_with_non_running_instances():
 
 
 @mock_aws
+def test_describe_instance_status_with_partial_instance_ids():
+    client = boto3.client("ec2", region_name="us-east-1")
+    ec2 = boto3.resource("ec2", region_name="us-east-1")
+    reservation = ec2.create_instances(ImageId=EXAMPLE_AMI_ID, MinCount=3, MaxCount=3)
+    instance1, instance2, instance3 = reservation
+
+    all_status = client.describe_instance_status(
+        InstanceIds=[instance1.id, instance3.id]
+    )["InstanceStatuses"]
+    assert instance1.id in [status["InstanceId"] for status in all_status]
+    assert instance2.id not in [status["InstanceId"] for status in all_status]
+    assert instance3.id in [status["InstanceId"] for status in all_status]
+
+
+@mock_aws
+def test_describe_instance_status_with_partial_instance_id_stopped():
+    client = boto3.client("ec2", region_name="us-east-1")
+    ec2 = boto3.resource("ec2", region_name="us-east-1")
+    reservation = ec2.create_instances(ImageId=EXAMPLE_AMI_ID, MinCount=3, MaxCount=3)
+    instance1, instance2, instance3 = reservation
+    instance1.stop()
+
+    all_running_status = client.describe_instance_status(
+        InstanceIds=[instance1.id, instance2.id, instance3.id]
+    )["InstanceStatuses"]
+    assert instance1.id not in [status["InstanceId"] for status in all_running_status]
+    assert instance2.id in [status["InstanceId"] for status in all_running_status]
+    assert instance3.id in [status["InstanceId"] for status in all_running_status]
+
+    all_status = client.describe_instance_status(
+        InstanceIds=[instance1.id, instance2.id, instance3.id], IncludeAllInstances=True
+    )["InstanceStatuses"]
+    assert instance1.id in [status["InstanceId"] for status in all_status]
+    assert instance2.id in [status["InstanceId"] for status in all_status]
+    assert instance3.id in [status["InstanceId"] for status in all_status]
+
+
+@mock_aws
+def test_describe_instance_status_with_stopped_instance_filter_and_instance_ids():
+    client = boto3.client("ec2", region_name="us-east-1")
+    ec2 = boto3.resource("ec2", region_name="us-east-1")
+    reservation = ec2.create_instances(ImageId=EXAMPLE_AMI_ID, MinCount=1, MaxCount=1)
+    instance1 = reservation[0]
+    instance1.stop()
+
+    stopped_status = client.describe_instance_status(
+        InstanceIds=[instance1.id],
+        Filters=[{"Name": "instance-state-name", "Values": ["stopped"]}],
+    )["InstanceStatuses"]
+    assert instance1.id not in [status["InstanceId"] for status in stopped_status]
+
+    all_status = client.describe_instance_status(
+        InstanceIds=[instance1.id],
+        Filters=[{"Name": "instance-state-name", "Values": ["stopped"]}],
+        IncludeAllInstances=True,
+    )["InstanceStatuses"]
+    assert instance1.id in [status["InstanceId"] for status in all_status]
+
+
+@mock_aws
 def test_get_instance_by_security_group():
     client = boto3.client("ec2", region_name="us-east-1")
     ec2 = boto3.resource("ec2", region_name="us-east-1")
@@ -2743,7 +2803,7 @@ def test_instance_iam_instance_profile():
     assert retrieve_all_instances(ec2_client, filters) == []
 
 
-def retrieve_all_reservations(client, filters=[]):  # pylint: disable=W0102
+def retrieve_all_reservations(client, filters=[]):
     resp = client.describe_instances(Filters=filters)
     all_reservations = resp["Reservations"]
     next_token = resp.get("NextToken")
@@ -2754,7 +2814,7 @@ def retrieve_all_reservations(client, filters=[]):  # pylint: disable=W0102
     return all_reservations
 
 
-def retrieve_all_instances(client, filters=[]):  # pylint: disable=W0102
+def retrieve_all_instances(client, filters=[]):
     reservations = retrieve_all_reservations(client, filters)
     return [i for r in reservations for i in r["Instances"]]
 
