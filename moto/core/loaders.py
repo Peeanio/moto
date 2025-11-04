@@ -22,7 +22,7 @@ from botocore.loaders import Loader as BotocoreLoader
 
 import moto
 
-moto_root = os.path.dirname(os.path.abspath(moto.__file__))
+moto_root = os.path.dirname(os.path.abspath(__file__))
 
 
 class Loader(BotocoreLoader):
